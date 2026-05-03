@@ -62,7 +62,7 @@ async def update_lobby(chat_id: int):
     async with game.lock:
         players_txt = "\n".join([f"👤 {p['username']}" for p in game.players.values()]) or "⚪ Пусто"
         status = "🟡 Ожидание" if len(game.players) < MIN_PLAYERS else "🟢 Готово"
-        text = (f"🎮 **МАФИЯ**\n👑 Создатель: @{game.players[game.creator_id]['username'] if game.creator_id in game.players else '—'}\n\n"
+        text = (f"🎮 МАФИЯ\n👑 Создатель: @{game.players[game.creator_id]['username'] if game.creator_id in game.players else '—'}\n\n"
                 f"👥 ({len(game.players)}/{MIN_PLAYERS}):\n{players_txt}\n\n📊 {status}")
 
         kb_btns = [("✅ Войти", "join_game"), ("🚪 Выйти", "leave_game")]
@@ -87,8 +87,8 @@ def check_win(chat_id: int) -> Optional[str]:
     game = games[chat_id]
     mafia = sum(1 for p in game.players.values() if p.get("alive") and p["role"] == "Мафия")
     civ = sum(1 for p in game.players.values() if p.get("alive") and p["role"] != "Мафия")
-    if mafia == 0: return "🕊️ **Мирные победили!** Все мафиози раскрыты."
-    if mafia >= civ: return "🩸 **Мафия победила!** Её осталось >= мирных."
+    if mafia == 0: return "🕊️ Мирные победили! Все мафиози раскрыты."
+    if mafia >= civ: return "🩸 Мафия победила! Её осталось >= мирных."
     return None
 
 async def safe_send(uid: int, text: str, kb: Optional[InlineKeyboardMarkup] = None):
@@ -119,7 +119,7 @@ async def cmd_start(message: types.Message):
         if game.phase == "lobby" and uid not in game.players:
             game.players[uid] = {"username": message.from_user.username or message.from_user.first_name, "alive": True, "role": ""}
             if game.lobby_msg_id is None:
-                msg = await message.answer("🎮 **МАФИЯ**\n👥 Лобби создано. Используйте кнопки ниже.", reply_markup=build_kb([("✅ Войти", "join_game"), ("🚪 Выйти", "leave_game")]), parse_mode="Markdown")
+                msg = await message.answer("🎮 МАФИЯ\n👥 Лобби создано. Используйте кнопки ниже.", reply_markup=build_kb([("✅ Войти", "join_game"), ("🚪 Выйти", "leave_game")]), parse_mode="Markdown")
                 game.lobby_msg_id = msg.message_id
             await update_lobby(chat_id)
 
@@ -129,11 +129,11 @@ async def cmd_profile(message: types.Message):
     init_stats(uid)
     s = user_stats[uid]
     wr = f"{(s['wins']/s['games']*100):.1f}%" if s['games'] > 0 else "0%"
-    await message.answer(f"📊 **Профиль**\n🎮 Игр: {s['games']}\n🏆 Побед: {s['wins']}\n💀 Поражений: {s['losses']}\n📈 Винрейт: {wr}")
+    await message.answer(f"📊 Профиль\n🎮 Игр: {s['games']}\n🏆 Побед: {s['wins']}\n💀 Поражений: {s['losses']}\n📈 Винрейт: {wr}")
 
 @dp.message(Command("help", "commands"), F.chat.type.in_(["group", "supergroup"]))
 async def cmd_help(message: types.Message):
-    await message.answer("📖 **Команды:**\n`/start` - Войти в лобби\n`/help` - Это меню\n`/profile` - Статистика (ЛС)\n\n🔘 Кнопки: Войти, Выйти, Старт")
+    await message.answer("📖 Команды:\n/start - Войти в лобби\n/help - Это меню\n/profile - Статистика (ЛС)\n\n🔘 Кнопки: Войти, Выйти, Старт")
 
 @dp.callback_query(F.data.in_(["join_game", "leave_game", "start_game"]))
 async def cb_lobby(callback: CallbackQuery):
@@ -157,7 +157,7 @@ async def cb_lobby(callback: CallbackQuery):
                 game.phase = "night"
                 assign_roles(chat_id)
                 await callback.answer("🚀 Старт!")
-                await bot.edit_message_text(chat_id=chat_id, message_id=game.lobby_msg_id, text="🌙 **Игра началась!** Роли отправлены в ЛС.")
+                await bot.edit_message_text(chat_id=chat_id, message_id=game.lobby_msg_id, text="🌙 Игра началась! Роли отправлены в ЛС.")
                 await start_game_flow(chat_id)
                 return
     await update_lobby(chat_id)
@@ -165,7 +165,7 @@ async def cb_lobby(callback: CallbackQuery):
 # ---------------- ИГРОВОЙ ПРОЦЕСС ----------------
 async def start_game_flow(chat_id: int):
     for uid, p in games[chat_id].players.items():
-        await safe_send(uid, f"🎭 Ваша роль: **{p['role']}**\n📌 Дождитесь ночи. Специальные роли получат запросы лично.")
+        await safe_send(uid, f"🎭 Ваша роль: {p['role']}\n📌 Дождитесь ночи. Специальные роли получат запросы лично.")
     await asyncio.sleep(2)
     await start_night(chat_id)
 
@@ -179,7 +179,7 @@ async def start_night(chat_id: int):
     targets = [(u, p["username"]) for u, p in game.players.items() if p.get("alive") and p["role"] != "Мафия"]
     if mafia_ids and targets:
         kb = build_kb([(f"🔪 {n}", f"mafia_{u}") for u, n in targets])
-        for uid in mafia_ids: await safe_send(uid, "🕶️ **Мафия просыпается.** Выберите жертву:", kb)
+        for uid in mafia_ids: await safe_send(uid, "🕶️ Мафия просыпается. Выберите жертву:", kb)
     try: await asyncio.wait_for(game.timer_cancel.wait(), timeout=20)
     except: pass
 
@@ -187,7 +187,7 @@ async def start_night(chat_id: int):
     sheriff_ids = [u for u, p in game.players.items() if p.get("alive") and p["role"] == "Шериф"]
     if sheriff_ids:
         kb = build_kb([(f"🔍 {p['username']}", f"sheriff_{u}") for u, p in game.players.items() if p.get("alive")])
-        for uid in sheriff_ids: await safe_send(uid, "🕵️‍♂️ **Шериф просыпается.** Кого проверить?", kb)
+        for uid in sheriff_ids: await safe_send(uid, "🕵️‍♂️ Шериф просыпается. Кого проверить?", kb)
     try: await asyncio.wait_for(game.timer_cancel.wait(), timeout=20)
     except: pass
 
@@ -195,7 +195,7 @@ async def start_night(chat_id: int):
     doc_ids = [u for u, p in game.players.items() if p.get("alive") and p["role"] == "Доктор"]
     if doc_ids:
         kb = build_kb([(f"💉 {p['username']}", f"doctor_{u}") for u, p in game.players.items() if p.get("alive")])
-        for uid in doc_ids: await safe_send(uid, "👨‍⚕️ **Доктор просыпается.** Кого спасти?", kb)
+        for uid in doc_ids: await safe_send(uid, "👨‍⚕️ Доктор просыпается. Кого спасти?", kb)
     try: await asyncio.wait_for(game.timer_cancel.wait(), timeout=20)
     except: pass
 
@@ -223,13 +223,13 @@ async def resolve_night(chat_id: int):
     saved = game.night_actions.get("doctor")
     checked = game.night_actions.get("sheriff")
 
-    dead_msg = "☀️ **Наступает день.**\n"
+    dead_msg = "☀️ Наступает день.\n"
     if killed and game.players.get(killed, {}).get("alive"):
         if killed == saved:
             dead_msg += "💊 Доктор спас жертву! Ночь прошла тихо."
         else:
             game.players[killed]["alive"] = False
-            dead_msg += f"🩸 Погиб: **{game.players[killed]['username']}** (роль: {game.players[killed]['role']})"
+            dead_msg += f"🩸 Погиб: {game.players[killed]['username']} (роль: {game.players[killed]['role']})"
     else:
         dead_msg += "🌙 Никто не умер."
     await bot.send_message(chat_id, dead_msg, parse_mode="Markdown")
@@ -251,7 +251,7 @@ async def start_voting(chat_id: int):
     game = games[chat_id]
     alive = [(u, p["username"]) for u, p in game.players.items() if p.get("alive")]
     kb = build_kb([(f"🗳️ {n}", f"vote_{u}") for u, n in alive])
-    await bot.send_message(chat_id, "📢 **Голосование!** Выберите подозреваемого:", reply_markup=kb, parse_mode="Markdown")
+    await bot.send_message(chat_id, "📢 Голосование! Выберите подозреваемого:", reply_markup=kb, parse_mode="Markdown")
 
 @dp.callback_query(F.data.startswith("vote_"))
 async def cb_vote(callback: CallbackQuery):
@@ -276,7 +276,7 @@ async def resolve_votes(chat_id: int):
     if len(executed) == 1:
         v = executed[0]
         game.players[v]["alive"] = False
-        await bot.send_message(chat_id, f"🔨 Изгнан: **{game.players[v]['username']}**.\nРоль: {game.players[v]['role']}", parse_mode="Markdown")
+        await bot.send_message(chat_id, f"🔨 Изгнан: {game.players[v]['username']}.\nРоль: {game.players[v]['role']}", parse_mode="Markdown")
     else:
         await bot.send_message(chat_id, "⚖️ Ничья! Никто не изгнан.")
     game.votes.clear()
