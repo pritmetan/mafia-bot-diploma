@@ -98,7 +98,6 @@ def assign_roles(chat_id: int):
     elif count == 6:
         roles = ["Мафия", "Мафия", "Шериф", "Доктор", "Мирный", "Мирный"]
     else:
-        # Запасной вариант для безопасности
         roles = ["Мафия", "Шериф", "Доктор", "Мирный", "Мирный", "Мирный"][:count]
         
     random.shuffle(roles)
@@ -112,7 +111,6 @@ def check_win(chat_id: int) -> Optional[str]:
     
     if mafia_alive == 0:
         return "🕊️ Мирные победили! Все мафиози раскрыты."
-    # Мафия побеждает, если осталось 2 игрока и хотя бы один из них мафия
     if len(alive) <= 2 and mafia_alive > 0:
         return "🩸 Мафия победила! Осталось 2 игрока, мафия выжила."
     return None
@@ -123,6 +121,14 @@ async def safe_send(uid: int, text: str, kb: Optional[InlineKeyboardMarkup] = No
         return True
     except Exception as e:
         logging.warning(f"ЛС ошибка {uid}: {e}")
+        return False
+
+async def clear_player_buttons(uid: int, text: str = "🔄 Интерфейс обновлён."):
+    """Отправляет сообщение с пустой клавиатурой, чтобы сбросить старые кнопки в ЛС"""
+    try:
+        await bot.send_message(uid, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[]))
+        return True
+    except:
         return False
 
 @dp.message(Command("start"))
@@ -159,6 +165,10 @@ async def cmd_stop(message: types.Message):
     chat_id = message.chat.id
     if chat_id in games:
         game = games[chat_id]
+        # Очищаем кнопки в ЛС у всех игроков перед удалением игры
+        for uid in game.players:
+            await clear_player_buttons(uid, "🛑 Игра отменена. Кнопки сброшены.")
+        # Удаляем лобби в группе
         if game.lobby_msg_id:
             try:
                 await bot.delete_message(chat_id, game.lobby_msg_id)
@@ -226,8 +236,9 @@ async def start_night(chat_id: int):
     targets = [(u, p["username"]) for u, p in game.players.items() if p.get("alive") and p["role"] != "Мафия"]
     mafia_ids = [u for u, p in game.players.items() if p.get("alive") and p["role"] == "Мафия"]
     if mafia_ids and targets:
-        kb = build_kb([(f" Убить {n}", f"mafia_{u}") for u, n in targets])
-        for uid in mafia_ids: await safe_send(uid, "🕶️ Мафия просыпается. Выберите жертву:", kb)
+        kb = build_kb([(f"🔪 Убить {n}", f"mafia_{u}") for u, n in targets])
+        for uid in mafia_ids: 
+            await safe_send(uid, "🕶️ Мафия просыпается. Выберите жертву:", kb)
     try: await asyncio.wait_for(game.timer_cancel.wait(), timeout=NIGHT_TIMEOUT)
     except: pass
 
@@ -235,8 +246,9 @@ async def start_night(chat_id: int):
     game.timer_cancel = asyncio.Event()
     sheriff_ids = [u for u, p in game.players.items() if p.get("alive") and p["role"] == "Шериф"]
     if sheriff_ids:
-        kb = build_kb([(f" Проверить {p['username']}", f"sheriff_{u}") for u, p in game.players.items() if p.get("alive")])
-        for uid in sheriff_ids: await safe_send(uid, "️‍️ Шериф просыпается. Кого проверить?", kb)
+        kb = build_kb([(f"🔍 Проверить {p['username']}", f"sheriff_{u}") for u, p in game.players.items() if p.get("alive")])
+        for uid in sheriff_ids: 
+            await safe_send(uid, "🕵️‍️ Шериф просыпается. Кого проверить?", kb)
     try: await asyncio.wait_for(game.timer_cancel.wait(), timeout=NIGHT_TIMEOUT)
     except: pass
 
@@ -245,7 +257,8 @@ async def start_night(chat_id: int):
     doc_ids = [u for u, p in game.players.items() if p.get("alive") and p["role"] == "Доктор"]
     if doc_ids:
         kb = build_kb([(f"💉 Спасти {p['username']}", f"doctor_{u}") for u, p in game.players.items() if p.get("alive")])
-        for uid in doc_ids: await safe_send(uid, "️ Доктор просыпается. Кого спасти?", kb)
+        for uid in doc_ids: 
+            await safe_send(uid, "⚕️ Доктор просыпается. Кого спасти?", kb)
     try: await asyncio.wait_for(game.timer_cancel.wait(), timeout=NIGHT_TIMEOUT)
     except: pass
 
@@ -255,7 +268,8 @@ async def start_night(chat_id: int):
 async def cb_night(callback: CallbackQuery):
     chat_id = callback.message.chat.id
     try:
-        if chat_id not in games: return
+        if chat_id not in games: 
+            return await callback.answer("❌ Игра не найдена.", show_alert=True)
         game = games[chat_id]
         if game.phase != "night":
             return await callback.answer("🌙 Ночная фаза уже завершена.", show_alert=True)
@@ -270,17 +284,26 @@ async def cb_night(callback: CallbackQuery):
 
         game.night_actions[role] = target
         game.timer_cancel.set()
+        
+        # ВАЖНО: Сначала отвечаем на callback, потом удаляем сообщение
         await callback.answer("✅ Действие принято.")
-        if callback.message:
-            try: await callback.message.delete()
-            except TelegramBadRequest: pass
+        
+        # Удаляем сообщение с кнопками, если оно ещё существует
+        if callback.message and callback.message.message_id:
+            try: 
+                await callback.message.delete()
+            except TelegramBadRequest: 
+                pass
+        
+        # Отправляем подтверждение с пустой клавиатурой, чтобы сбросить старые кнопки
+        await clear_player_buttons(uid, "✅ Ваше действие зафиксировано. Дождитесь рассвета.")
+        
     except Exception as e:
         logging.error(f"Ошибка ночного колбэка: {e}")
         await callback.answer("Произошла ошибка.", show_alert=True)
 
 async def resolve_night(chat_id: int):
     game = games[chat_id]
-    # Небольшая задержка для гарантии применения состояний
     await asyncio.sleep(0.5)
     
     killed = game.night_actions.get("mafia")
@@ -299,10 +322,10 @@ async def resolve_night(chat_id: int):
     await bot.send_message(chat_id, dead_msg)
 
     if checked and game.players[checked].get("alive"):
-        res = " МАФИЯ" if game.players[checked]["role"] == "Мафия" else "🟢 МИРНЫЙ"
+        res = "🔴 МАФИЯ" if game.players[checked]["role"] == "Мафия" else "🟢 МИРНЫЙ"
         for u, p in game.players.items():
             if p["role"] == "Шериф" and p.get("alive"):
-                await safe_send(u, f"🕵️️ Проверка: {game.players[checked]['username']} - {res}")
+                await safe_send(u, f"🕵️‍️ Проверка: {game.players[checked]['username']} - {res}")
 
     win = check_win(chat_id)
     if win: await end_game(chat_id, win); return
@@ -316,14 +339,16 @@ async def start_voting(chat_id: int):
     game = games[chat_id]
     alive = [(u, p["username"]) for u, p in game.players.items() if p.get("alive")]
     kb = build_kb([(f"🗳️ Голос против {n}", f"vote_{u}") for u, n in alive])
-    await bot.send_message(chat_id, f"📢 Голосование! Выберите подозреваемого. Таймер: {VOTING_TIMEOUT} сек.", reply_markup=kb)
+    # Сохраняем message_id голосования, чтобы потом отредактировать и убрать кнопки
+    msg = await bot.send_message(chat_id, f"📢 Голосование! Выберите подозреваемого. Таймер: {VOTING_TIMEOUT} сек.", reply_markup=kb)
+    game.voting_msg_id = msg.message_id
 
     async def voting_timeout():
         try:
             await asyncio.wait_for(game.voting_cancel.wait(), timeout=VOTING_TIMEOUT)
         except asyncio.TimeoutError:
             if game.phase == "voting":
-                await bot.send_message(chat_id, " Время голосования истекло. Подсчёт голосов...")
+                await bot.send_message(chat_id, "⏳ Время голосования истекло. Подсчёт голосов...")
                 await resolve_votes(chat_id)
 
     asyncio.create_task(voting_timeout())
@@ -356,6 +381,18 @@ async def resolve_votes(chat_id: int):
     if game.phase != "voting": return
     game.phase = "day_resolve"
     
+    # Убираем кнопки голосования, редактируя сообщение
+    if hasattr(game, 'voting_msg_id') and game.voting_msg_id:
+        try:
+            await bot.edit_message_text(
+                chat_id=chat_id, 
+                message_id=game.voting_msg_id, 
+                text="🗳️ Голосование завершено. Подсчёт результатов...",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[])
+            )
+        except TelegramBadRequest:
+            pass
+    
     if not game.votes:
         await bot.send_message(chat_id, "🚫 Никто не проголосовал. Ничья. Раунд завершен.")
     else:
@@ -378,12 +415,11 @@ async def resolve_votes(chat_id: int):
     game.phase = "night"
     game.round += 1
     await asyncio.sleep(3)
-    await bot.send_message(chat_id, " Наступает новая ночь...")
+    await bot.send_message(chat_id, "🌙 Наступает новая ночь...")
     await start_night(chat_id)
 
 async def end_game(chat_id: int, msg: str):
     game = games[chat_id]
-    # Исправлено: передаём пустой список в inline_keyboard
     await bot.send_message(chat_id, msg, reply_markup=InlineKeyboardMarkup(inline_keyboard=[]))
     
     for uid, p in game.players.items():
@@ -397,8 +433,7 @@ async def end_game(chat_id: int, msg: str):
         s = user_stats[uid]
         wr = f"{(s['wins']/s['games']*100):.1f}%" if s['games'] > 0 else "0%"
         try:
-            # Исправлено: передаём пустой список в inline_keyboard
-            await bot.send_message(uid, f"Игра завершена!\nРезультат: {msg}\n\n📊 Ваша новая статистика:\nИгр: {s['games']}\nПобед: {s['wins']}\nПоражений: {s['losses']}\nВинрейт: {wr}", reply_markup=InlineKeyboardMarkup(inline_keyboard=[]))
+            await bot.send_message(uid, f"🏁 Игра завершена!\nРезультат: {msg}\n\n📊 Ваша новая статистика:\nИгр: {s['games']}\nПобед: {s['wins']}\nПоражений: {s['losses']}\nВинрейт: {wr}", reply_markup=InlineKeyboardMarkup(inline_keyboard=[]))
         except: pass
         
     game.phase = "ended"
