@@ -205,7 +205,7 @@ async def cb_lobby(callback: CallbackQuery):
                 assign_roles(chat_id)
                 await callback.answer("🚀 Игра начинается!")
                 try:
-                    await bot.edit_message_text(chat_id=chat_id, message_id=game.lobby_msg_id, text="🌙 Игра началась! Роли отправлены в личные сообщения.", reply_markup=InlineKeyboardMarkup())
+                    await bot.edit_message_text(chat_id=chat_id, message_id=game.lobby_msg_id, text="🌙 Игра началась! Роли отправлены в личные сообщения.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[]))
                 except TelegramBadRequest: pass
                 await start_game_flow(chat_id)
                 return
@@ -383,7 +383,8 @@ async def resolve_votes(chat_id: int):
 
 async def end_game(chat_id: int, msg: str):
     game = games[chat_id]
-    await bot.send_message(chat_id, msg, reply_markup=InlineKeyboardMarkup())
+    # Исправлено: передаём пустой список в inline_keyboard
+    await bot.send_message(chat_id, msg, reply_markup=InlineKeyboardMarkup(inline_keyboard=[]))
     
     for uid, p in game.players.items():
         init_stats(uid)
@@ -396,8 +397,8 @@ async def end_game(chat_id: int, msg: str):
         s = user_stats[uid]
         wr = f"{(s['wins']/s['games']*100):.1f}%" if s['games'] > 0 else "0%"
         try:
-            # Отправляем в ЛС результат и обновленную статистику с пустой клавиатурой (сбрасывает старые кнопки)
-            await bot.send_message(uid, f" Игра завершена!\nРезультат: {msg}\n\n📊 Ваша новая статистика:\nИгр: {s['games']}\nПобед: {s['wins']}\nПоражений: {s['losses']}\nВинрейт: {wr}", reply_markup=InlineKeyboardMarkup())
+            # Исправлено: передаём пустой список в inline_keyboard
+            await bot.send_message(uid, f"Игра завершена!\nРезультат: {msg}\n\n📊 Ваша новая статистика:\nИгр: {s['games']}\nПобед: {s['wins']}\nПоражений: {s['losses']}\nВинрейт: {wr}", reply_markup=InlineKeyboardMarkup(inline_keyboard=[]))
         except: pass
         
     game.phase = "ended"
